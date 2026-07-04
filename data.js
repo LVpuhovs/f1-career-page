@@ -76,9 +76,8 @@ const DEFAULT_CALENDAR = [
 ];
 
 // Starter career players — rename/add/remove freely on the Careers tab.
-// Round labels mirror the original spreadsheet's layout (Round 1-3 + Randomized).
+// Seasons start with one entry and grow as the user adds more.
 function makeDefaultPlayers() {
-  const roundLabels = ["Round 1", "Round 2", "Round 3", "Randomized"];
   const names = ["Player 1", "Player 2", "Player 3"];
   return names.map((n, i) => ({
     id: "player_" + (i + 1),
@@ -93,14 +92,15 @@ function makeDefaultPlayers() {
     driverChampionships: 0,
     constructorChampionships: 0,
     racesDriven: 1,
-    rounds: roundLabels.map((label, j) => ({
-      id: "player_" + (i + 1) + "_round_" + j,
-      label,
+    seasonSignedTeam: null,
+    seasonSignedRound: null,
+    rounds: [{
+      id: "player_" + (i + 1) + "_round_0",
+      label: "Season 1 team",
       team: "",
-      points: 0,
       result: "",
       attempts: 0,
       note: "",
-    })),
+    }],
   }));
 }

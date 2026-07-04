@@ -41,6 +41,9 @@ function loadState() {
       p.driverChampionships = Number(p.driverChampionships ?? 0) || 0;
       p.constructorChampionships = Number(p.constructorChampionships ?? 0) || 0;
       p.rounds = (p.rounds || []).map(r => Object.assign({ attempts: 0, result: "", team: "", note: "" }, r));
+      // season fields: which team (if any) the player signed to in this season
+      p.seasonSignedTeam = p.seasonSignedTeam || null;
+      p.seasonSignedRound = p.seasonSignedRound || null;
       // compute acclaim using existing calc and ensure minimum 1
       try {
         p.acclaim = Math.max(1, calculatePlayerAcclaim(p));
@@ -120,6 +123,13 @@ function pickWeightedTeam(player, teams) {
 }
 
 function resolveRoundAttempt(player, round, teams) {
+  // if the player has already signed this season, block further attempts
+  if (player.seasonSignedTeam) {
+    round.result = "Signed";
+    round.attempts = round.attempts || 0;
+    return { team: player.seasonSignedTeam, result: "Signed", note: "Already signed this season", randomized: false };
+  }
+
   const selectedTeam = round.team ? teams.find(team => team.id === round.team) : null;
   if (!selectedTeam) {
     round.result = "";
@@ -133,6 +143,9 @@ function resolveRoundAttempt(player, round, teams) {
   if (passed) {
     round.result = "Success";
     round.attempts = 0;
+    player.seasonSignedTeam = round.team;
+    player.seasonSignedRound = round.id;
+    round.note = `${round.note || ""}`.trim();
     return { team: round.team, result: round.result, note: round.note || "", randomized: false };
   }
 
@@ -141,11 +154,13 @@ function resolveRoundAttempt(player, round, teams) {
 
   if (round.attempts >= 3) {
     const randomizedTeam = pickWeightedTeam(player, teams);
-    if (randomizedTeam && randomizedTeam.id !== round.team) {
+    if (randomizedTeam) {
       round.team = randomizedTeam.id;
-      round.result = "";
+      round.result = "Success";
       round.attempts = 0;
-      round.note = `${round.note || ""} Randomized after 3 failed attempts`.trim();
+      round.note = `${round.note || ""} Randomized and auto-signed after 3 failed attempts`.trim();
+      player.seasonSignedTeam = randomizedTeam.id;
+      player.seasonSignedRound = round.id;
       return { team: round.team, result: round.result, note: round.note, randomized: true };
     }
   }
@@ -157,16 +172,16 @@ function calculatePlayerAcclaim(player) {
   const wins = Number(player.wins ?? 0) || 0;
   const podiums = Number(player.podiums ?? 0) || 0;
   const fastestLaps = Number(player.fastestLaps ?? 0) || 0;
-  const teammateBeatenPercent = Number(player.teammateBeatenPercent ?? 0) || 0;
+  const teammateBeaten = Number(player.teammateBeaten ?? 0) || 0;
   const driverChampionships = Number(player.driverChampionships ?? 0) || 0;
   const constructorChampionships = Number(player.constructorChampionships ?? 0) || 0;
   const races = Number(player.races ?? player.racesDriven ?? 0) || 0;
-
-  const currentAcclaim = (races + wins + podiums + fastestLaps + teammateBeatenPercent / 100) / 2;
+  const startAcclaim = Number(player.acclaimBase ?? 1) || 1;
+  const currentAcclaim = (races + wins / 2 + podiums /2  + fastestLaps / 2 + teammateBeaten / 2) / 2;
   const bonus = races > 0 ? (currentAcclaim + wins) / races : 0;
   const finalAcclaim = currentAcclaim + bonus + (driverChampionships + constructorChampionships) * 0.5;
 
-  return Number(Math.max(1, finalAcclaim).toFixed(2));
+  return Number(Math.max(startAcclaim, finalAcclaim).toFixed(2));
 }
 
 /* ---------------------------- render: Teams ---------------------------- */
@@ -364,11 +379,27 @@ function renderPlayers() {
     const rounds = player.rounds.map(round => {
       const team = round.team ? teamById(round.team) : null;
       const chance = team ? chanceOfSuccess(player.acclaim, team) : null;
+
+      const signed = player.seasonSignedTeam;
+      const exhausted = Number(round.attempts) >= 3;
+      const alreadySuccess = round.result === "Success" || round.result === "Signed";
+
+      let attemptButtonHtml = '';
+      if (signed) {
+        attemptButtonHtml = `<button class="btn btn--ghost" disabled>Signed</button>`;
+      } else if (alreadySuccess) {
+        attemptButtonHtml = `<button class="btn btn--ghost" disabled>Signed</button>`;
+      } else if (exhausted) {
+        attemptButtonHtml = `<button class="btn btn--ghost" disabled>Attempts exhausted</button>`;
+      } else {
+        attemptButtonHtml = `<button class="btn btn--ghost" data-action="attempt-signing">Attempt sign</button>`;
+      }
+
       return `
         <div class="round-row" data-player="${player.id}" data-round="${round.id}">
           <span class="round-label">${escapeHtml(round.label)}</span>
           <select class="cell-input" data-field="team">${teamOptions(round.team)}</select>
-          <button class="btn btn--ghost" data-action="attempt-signing">Attempt sign</button>
+          ${attemptButtonHtml}
           <div class="round-meta">${chance !== null ? `Chance: ${chance}%` : "Select a team"}${round.attempts ? ` · Attempts: ${round.attempts}/3` : ""}</div>
           <select class="result-pill" data-field="result" data-result="${round.result}">
             <option value="" ${round.result === "" ? "selected" : ""}>Pending</option>
@@ -389,8 +420,8 @@ function renderPlayers() {
             <input class="cell-input" type="number" data-field="points" value="${player.points}">
           </div>
           <div class="stat">
-            <label>Races</label>
-            <input class="cell-input" type="number" min="0" data-field="races" value="${player.races ?? 0}">
+            <label>Races driven</label>
+            <input class="cell-input" type="number" min="0" data-field="racesDriven" value="${player.racesDriven ?? player.races ?? 0}">
           </div>
           <div class="stat">
             <label>Wins</label>
@@ -405,8 +436,8 @@ function renderPlayers() {
             <input class="cell-input" type="number" min="0" data-field="fastestLaps" value="${player.fastestLaps ?? 0}">
           </div>
           <div class="stat">
-            <label>Teammate beaten %</label>
-            <input class="cell-input" type="number" min="0" data-field="teammateBeatenPercent" value="${player.teammateBeatenPercent ?? 0}">
+            <label>Teammate beaten</label>
+            <input class="cell-input" type="number" min="0" data-field="teammateBeaten" value="${player.teammateBeaten ?? 0}">
           </div>
           <div class="stat">
             <label>Driver titles</label>
@@ -417,12 +448,8 @@ function renderPlayers() {
             <input class="cell-input" type="number" min="0" data-field="constructorChampionships" value="${player.constructorChampionships ?? 0}">
           </div>
           <div class="stat">
-            <label>Races driven</label>
-            <input class="cell-input" type="number" min="0" data-field="racesDriven" value="${player.racesDriven ?? player.races ?? 0}">
-          </div>
-          <div class="stat">
             <label>Acclaim</label>
-            <input class="cell-input" type="number" data-field="acclaim" value="${player.acclaim}" disabled title="Calculated from the acclaim formula">
+            <input class="cell-input" type="number" min="1" data-field="acclaim" value="${player.acclaim}" disabled title="Calculated from the acclaim formula">
           </div>
           <div class="spacer"></div>
           <button class="btn btn--ghost" data-action="add-round">+ Round</button>
@@ -492,7 +519,22 @@ function renderPlayers() {
       const roundId = row.dataset.round;
       const player = state.players.find(p => p.id === playerId);
       const round = player.rounds.find(r => r.id === roundId);
-      resolveRoundAttempt(player, round, state.teams);
+
+      if (player.seasonSignedTeam) return;
+      if (!round.team) { alert("Select a team before attempting to sign."); return; }
+      if ((Number(round.attempts) || 0) >= 3) return;
+
+      const res = resolveRoundAttempt(player, round, state.teams);
+
+      // if signing completed, mark other rounds appropriately
+      if (player.seasonSignedTeam) {
+        player.rounds.forEach(r => {
+          if (r.id !== round.id) {
+            if (r.team === player.seasonSignedTeam) r.result = "Signed";
+          }
+        });
+      }
+
       saveState();
       renderPlayers();
       renderTeams();
@@ -503,11 +545,11 @@ function renderPlayers() {
     btn.addEventListener("click", () => {
       const playerId = btn.closest(".player-card").dataset.player;
       const player = state.players.find(p => p.id === playerId);
+      const nextSeason = player.rounds.length + 1;
       player.rounds.push({
         id: uid("round"),
-        label: "Round " + (player.rounds.length + 1),
+        label: `Season ${nextSeason} team`,
         team: "",
-        points: 0,
         result: "",
         attempts: 0,
         note: "",
@@ -536,18 +578,24 @@ document.getElementById("addPlayerBtn").addEventListener("click", () => {
     name: "Player " + n,
     acclaim: 1,
     points: 0,
-    races: 0,
+    races: 1,
     wins: 0,
     podiums: 0,
     fastestLaps: 0,
     teammateBeatenPercent: 0,
     driverChampionships: 0,
     constructorChampionships: 0,
-    racesDriven: 0,
-    rounds: ["Round 1", "Round 2", "Round 3", "Randomized"].map((label) => ({
+    racesDriven: 1,
+    seasonSignedTeam: null,
+    seasonSignedRound: null,
+    rounds: [{
       id: uid("round"),
-      label, team: "", points: 0, result: "", attempts: 0, note: "",
-    })),
+      label: "Season 1 team",
+      team: "",
+      result: "",
+      attempts: 0,
+      note: "",
+    }],
   });
   saveState();
   renderPlayers();

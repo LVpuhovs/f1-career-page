@@ -161,7 +161,7 @@ input[type="checkbox"]{ width:16px; height:16px; accent-color: var(--red); curso
 .stat input{ width: 100%; min-width: 70px; max-width: 100px; }
 .player-card__head .spacer{ flex:1; min-width: 80px; }
 .rounds{ padding: 14px 18px; display:flex; flex-direction:column; gap:10px; }
-.round-row{ display:grid; grid-template-columns: 100px 110px 1fr 100px 110px 28px; gap:8px; align-items:center; }
+.round-row{ display:grid; grid-template-columns: 100px 120px 140px 100px 1fr 110px 180px 28px; gap:8px; align-items:center; }
 .round-row .round-label{ font-family: var(--font-mono); font-size:12px; color: var(--text-dim); text-transform:uppercase; }
 .round-row .btn--ghost{ font-size:11px; padding:5px 8px; min-width: 90px; }
 .round-meta{ font-size:12px; color: var(--text-dim); }
@@ -170,9 +170,10 @@ input[type="checkbox"]{ width:16px; height:16px; accent-color: var(--red); curso
 .result-pill[data-result="Fail"]{ border-color: var(--red); color: #ff8f8a; }
 
 @media (max-width: 720px){
-  .round-row{ grid-template-columns: 1fr 1fr; grid-template-areas: "label label" "team team" "attempt attempt" "meta result" "note note" "del del"; }
+  .round-row{ grid-template-columns: 1fr 1fr; grid-template-areas: "label label" "team team" "teammate teammate" "attempt attempt" "meta result" "note note" "del del"; }
   .round-row .round-label{ grid-area: label; }
   .round-row select[data-field="team"]{ grid-area: team; }
+  .round-row select[data-field="teammate"]{ grid-area: teammate; }
   .round-row [data-action="attempt-signing"]{ grid-area: attempt; }
   .round-row .round-meta{ grid-area: meta; }
   .round-row .result-pill{ grid-area: result; }

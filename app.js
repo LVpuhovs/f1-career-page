@@ -40,10 +40,12 @@ function loadState() {
       p.teammateBeatenPercent = Number(p.teammateBeatenPercent ?? 0) || 0;
       p.driverChampionships = Number(p.driverChampionships ?? 0) || 0;
       p.constructorChampionships = Number(p.constructorChampionships ?? 0) || 0;
-      p.rounds = (p.rounds || []).map(r => Object.assign({ attempts: 0, result: "", team: "", note: "" }, r));
+      p.rounds = (p.rounds || []).map(r => Object.assign({ attempts: 0, result: "", team: "", teammate: "", note: "" }, r));
       // season fields: which team (if any) the player signed to in this season
       p.seasonSignedTeam = p.seasonSignedTeam || null;
       p.seasonSignedRound = p.seasonSignedRound || null;
+      // track current season (for multi-season support)
+      p.currentSeason = p.currentSeason || 1;
       // compute acclaim using existing calc and ensure minimum 1
       try {
         p.acclaim = Math.max(1, calculatePlayerAcclaim(p));
@@ -123,13 +125,6 @@ function pickWeightedTeam(player, teams) {
 }
 
 function resolveRoundAttempt(player, round, teams) {
-  // if the player has already signed this season, block further attempts
-  if (player.seasonSignedTeam) {
-    round.result = "Signed";
-    round.attempts = round.attempts || 0;
-    return { team: player.seasonSignedTeam, result: "Signed", note: "Already signed this season", randomized: false };
-  }
-
   const selectedTeam = round.team ? teams.find(team => team.id === round.team) : null;
   if (!selectedTeam) {
     round.result = "";
@@ -143,9 +138,9 @@ function resolveRoundAttempt(player, round, teams) {
   if (passed) {
     round.result = "Success";
     round.attempts = 0;
-    player.seasonSignedTeam = round.team;
-    player.seasonSignedRound = round.id;
     round.note = `${round.note || ""}`.trim();
+    player.seasonSignedTeam = selectedTeam.id;
+    player.seasonSignedRound = round.id;
     return { team: round.team, result: round.result, note: round.note || "", randomized: false };
   }
 
@@ -158,6 +153,7 @@ function resolveRoundAttempt(player, round, teams) {
       round.team = randomizedTeam.id;
       round.result = "Success";
       round.attempts = 0;
+      round.teammate = "";
       round.note = `${round.note || ""} Randomized and auto-signed after 3 failed attempts`.trim();
       player.seasonSignedTeam = randomizedTeam.id;
       player.seasonSignedRound = round.id;
@@ -188,14 +184,20 @@ function calculatePlayerAcclaim(player) {
 
 function renderChanceContextOptions() {
   const sel = document.getElementById("chanceContext");
+  if (!sel) return;
   const prev = sel.value;
   sel.innerHTML = state.players.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("");
-  if (prev && state.players.some(p => p.id === prev)) sel.value = prev;
+  if (prev && state.players.some(p => p.id === prev)) {
+    sel.value = prev;
+  } else if (state.players[0]) {
+    sel.value = state.players[0].id;
+  }
 }
 
 function renderTeams() {
   renderChanceContextOptions();
-  const activePlayerId = document.getElementById("chanceContext").value;
+  const sel = document.getElementById("chanceContext");
+  const activePlayerId = sel ? sel.value : "";
   const activePlayer = state.players.find(p => p.id === activePlayerId) || state.players[0];
   const acclaim = activePlayer ? getPlayerAcclaim(activePlayer) : 0;
   const chanceDetails = document.getElementById("chanceDetails");
@@ -269,7 +271,12 @@ function renderDrivers() {
 
 function renderStandings() {
   const dTbody = document.querySelector("#driverStandingsTable tbody");
-  const sortedDrivers = [...state.driverStandings].sort((a, b) => b.points - a.points);
+  // Filter to only drivers with a team assigned (exclude free agents)
+  const driversWithTeams = state.driverStandings.filter(s => {
+    const driver = driverById(s.driver);
+    return driver && driver.team;
+  });
+  const sortedDrivers = [...driversWithTeams].sort((a, b) => b.points - a.points);
   dTbody.innerHTML = sortedDrivers.map((s, i) => {
     const driver = driverById(s.driver);
     const team = driver ? teamById(driver.team) : null;
@@ -370,8 +377,131 @@ function teamOptions(selectedId) {
     .join("");
 }
 
+function refreshRosterViews() {
+  syncSignedPlayersToRoster();
+  renderPlayers();
+  renderTeams();
+  renderDrivers();
+  renderStandings();
+}
+
+function syncSignedPlayersToRoster() {
+  let changed = false;
+  state.players.forEach(player => {
+    const signedRound = player.rounds.find(r => r.id === player.seasonSignedRound) ||
+      player.rounds.find(r => r.result === "Success" || r.result === "Signed");
+
+    if (!player.seasonSignedTeam && signedRound && signedRound.team) {
+      player.seasonSignedTeam = signedRound.team;
+      player.seasonSignedRound = signedRound.id;
+      changed = true;
+    }
+
+    if (player.seasonSignedTeam) {
+      const round = player.rounds.find(r => r.id === player.seasonSignedRound) || signedRound;
+      // Apply signing for any round where the team matches seasonSignedTeam
+      // (not just the specific signed round, to handle edge cases)
+      if (round && round.team === player.seasonSignedTeam) {
+        changed = applyTeamSigning(player, round) || changed;
+      }
+    }
+
+    // Ensure every signed player is in drivers and standings, regardless of round validation
+    if (player.seasonSignedTeam) {
+      const team = teamById(player.seasonSignedTeam);
+      if (team) {
+        let careerDriver = driverById(player.id);
+        if (!careerDriver) {
+          careerDriver = { id: player.id, name: player.name, team: player.seasonSignedTeam, number: 0 };
+          state.drivers.push(careerDriver);
+          changed = true;
+        } else if (careerDriver.team !== player.seasonSignedTeam) {
+          careerDriver.team = player.seasonSignedTeam;
+          changed = true;
+        }
+        
+        if (!state.driverStandings.some(entry => entry.driver === player.id)) {
+          state.driverStandings.push({ driver: player.id, points: 0 });
+          changed = true;
+        }
+      }
+    }
+  });
+
+  if (changed) saveState();
+}
+
+function teamDrivers(teamId, excludeDriverId) {
+  return state.drivers.filter(d => d.team === teamId && d.id !== excludeDriverId);
+}
+
+function teamDriverOptions(teamId, selectedDriverId, excludeDriverId) {
+  const drivers = teamDrivers(teamId, excludeDriverId);
+  const selectedDriver = selectedDriverId ? driverById(selectedDriverId) : null;
+  const options = [...drivers];
+  if (selectedDriver && selectedDriver.id !== excludeDriverId && !options.some(d => d.id === selectedDriver.id)) {
+    options.unshift(selectedDriver);
+  }
+  if (!options.length) {
+    return `<option value="">— no current drivers —</option>`;
+  }
+  return `<option value="">— choose teammate —</option>` +
+    options.map(d => `<option value="${d.id}" ${d.id === selectedDriverId ? "selected" : ""}>${escapeHtml(d.name)}</option>`).join("");
+}
+
+function applyTeamSigning(player, round) {
+  if (!player.seasonSignedTeam) return false;
+  const teamId = player.seasonSignedTeam;
+  const team = teamById(teamId);
+  if (!team) return false;
+
+  let changed = false;
+  const eligibleDrivers = teamDrivers(teamId, player.id);
+
+  // Only auto-pick a teammate on FIRST sign; don't re-pick on every render
+  if (!round.teammate && eligibleDrivers.length > 0) {
+    round.teammate = eligibleDrivers[0].id;
+    changed = true;
+  }
+
+  let careerDriver = driverById(player.id);
+  if (!careerDriver) {
+    careerDriver = { id: player.id, name: player.name, team: teamId, number: 0 };
+    state.drivers.push(careerDriver);
+    state.driverStandings.push({ driver: player.id, points: 0 });
+    changed = true;
+  } else {
+    if (careerDriver.team !== teamId) {
+      careerDriver.team = teamId;
+      changed = true;
+    }
+    if (careerDriver.name !== player.name) {
+      careerDriver.name = player.name;
+      changed = true;
+    }
+  }
+
+  // Only remove teammate if one has been EXPLICITLY selected by user (not auto-picked)
+  if (round.teammate && round.result === "Success") {
+    const replaced = driverById(round.teammate);
+    if (replaced && replaced.team === teamId && replaced.id !== player.id) {
+      replaced.team = "";
+      changed = true;
+    }
+  }
+
+  if (!state.driverStandings.some(entry => entry.driver === player.id)) {
+    state.driverStandings.push({ driver: player.id, points: 0 });
+    changed = true;
+  }
+
+  return changed;
+}
+
 function renderPlayers() {
   const wrap = document.getElementById("playersWrap");
+  syncSignedPlayersToRoster();
+
   wrap.innerHTML = state.players.map(player => {
     // ensure acclaim is current and at least 1
     try { player.acclaim = Math.max(1, calculatePlayerAcclaim(player)); } catch (e) { player.acclaim = 1; }
@@ -380,9 +510,13 @@ function renderPlayers() {
       const team = round.team ? teamById(round.team) : null;
       const chance = team ? chanceOfSuccess(player.acclaim, team) : null;
 
-      const signed = player.seasonSignedTeam;
+      const signed = Boolean(player.seasonSignedTeam);
       const exhausted = Number(round.attempts) >= 3;
       const alreadySuccess = round.result === "Success" || round.result === "Signed";
+      const teammateSelectHtml = team ? `
+        <select class="cell-input" data-field="teammate" ${signed ? "disabled" : ""}>
+          ${teamDriverOptions(team.id, round.teammate, player.id)}
+        </select>` : "";
 
       let attemptButtonHtml = '';
       if (signed) {
@@ -398,7 +532,8 @@ function renderPlayers() {
       return `
         <div class="round-row" data-player="${player.id}" data-round="${round.id}">
           <span class="round-label">${escapeHtml(round.label)}</span>
-          <select class="cell-input" data-field="team">${teamOptions(round.team)}</select>
+          <select class="cell-input" data-field="team" ${signed ? "disabled" : ""}>${teamOptions(round.team)}</select>
+          ${teammateSelectHtml}
           ${attemptButtonHtml}
           <div class="round-meta">${chance !== null ? `Chance: ${chance}%` : "Select a team"}${round.attempts ? ` · Attempts: ${round.attempts}/3` : ""}</div>
           <select class="result-pill" data-field="result" data-result="${round.result}">
@@ -460,12 +595,49 @@ function renderPlayers() {
   }).join("");
 
   // player-level field changes
+  wrap.querySelectorAll(".player-card__head input[data-field='name']").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const playerId = inp.closest(".player-card").dataset.player;
+      const player = state.players.find(p => p.id === playerId);
+      player.name = inp.value;
+
+      const careerDriver = driverById(player.id);
+      if (careerDriver) {
+        careerDriver.name = player.name;
+      }
+
+      const sel = document.getElementById("chanceContext");
+      const opt = sel ? sel.querySelector(`option[value="${player.id}"]`) : null;
+      if (opt) opt.textContent = player.name;
+
+      const details = document.getElementById("chanceDetails");
+      if (details && sel && sel.value === player.id) {
+        const acclaim = getPlayerAcclaim(player);
+        details.textContent = `${escapeHtml(player.name)} acclaim: ${acclaim}`;
+      }
+
+      saveState();
+    });
+  });
+
   wrap.querySelectorAll(".player-card__head input").forEach(inp => {
     inp.addEventListener("change", () => {
       const playerId = inp.closest(".player-card").dataset.player;
       const player = state.players.find(p => p.id === playerId);
       const field = inp.dataset.field;
+      if (!field) return;
       const value = field === "name" ? inp.value : (Number(inp.value) || 0);
+
+      if (field === "name") {
+        player.name = value;
+        const careerDriver = driverById(player.id);
+        if (careerDriver) careerDriver.name = player.name;
+        saveState();
+        renderTeams();
+        renderDrivers();
+        renderStandings();
+        return;
+      }
 
       if (field === "races" || field === "racesDriven") {
         player.races = value;
@@ -475,8 +647,7 @@ function renderPlayers() {
       }
 
       saveState();
-      renderPlayers();
-      renderTeams();
+      refreshRosterViews();
     });
   });
 
@@ -492,17 +663,24 @@ function renderPlayers() {
 
         if (field === "team") {
           round.team = inp.value;
+          round.teammate = "";
           round.result = "";
           round.attempts = 0;
           saveState();
-          renderPlayers();
-          renderTeams();
+          refreshRosterViews();
+          return;
+        }
+
+        if (field === "teammate") {
+          round.teammate = inp.value;
+          saveState();
+          refreshRosterViews();
           return;
         }
 
         round[field] = inp.value;
         saveState();
-        renderPlayers();
+        refreshRosterViews();
       });
     });
     row.querySelector('[data-action="delete-round"]').addEventListener("click", () => {
@@ -511,7 +689,7 @@ function renderPlayers() {
       const player = state.players.find(p => p.id === playerId);
       player.rounds = player.rounds.filter(r => r.id !== roundId);
       saveState();
-      renderPlayers();
+      refreshRosterViews();
     });
 
     row.querySelector('[data-action="attempt-signing"]').addEventListener("click", () => {
@@ -520,24 +698,28 @@ function renderPlayers() {
       const player = state.players.find(p => p.id === playerId);
       const round = player.rounds.find(r => r.id === roundId);
 
-      if (player.seasonSignedTeam) return;
+      // Prevent signing if THIS PLAYER already signed THIS SEASON
+      if (player.seasonSignedTeam && player.seasonSignedRound) {
+        const signedRound = player.rounds.find(r => r.id === player.seasonSignedRound);
+        if (signedRound && signedRound.result === "Success") return;
+      }
+
       if (!round.team) { alert("Select a team before attempting to sign."); return; }
       if ((Number(round.attempts) || 0) >= 3) return;
 
       const res = resolveRoundAttempt(player, round, state.teams);
 
-      // if signing completed, mark other rounds appropriately
       if (player.seasonSignedTeam) {
+        applyTeamSigning(player, round);
         player.rounds.forEach(r => {
-          if (r.id !== round.id) {
-            if (r.team === player.seasonSignedTeam) r.result = "Signed";
+          if (r.id !== round.id && r.team === player.seasonSignedTeam) {
+            r.result = "Signed";
           }
         });
       }
 
       saveState();
-      renderPlayers();
-      renderTeams();
+      refreshRosterViews();
     });
   });
 
@@ -550,13 +732,47 @@ function renderPlayers() {
         id: uid("round"),
         label: `Season ${nextSeason} team`,
         team: "",
+        teammate: "",
         result: "",
         attempts: 0,
         note: "",
       });
       saveState();
-      renderPlayers();
+      refreshRosterViews();
     });
+  });
+
+  // Add "Finish Season" buttons
+  wrap.querySelectorAll('[data-action="delete-player"]').forEach(btn => {
+    const card = btn.closest(".player-card");
+    const playerId = card.dataset.player;
+    const player = state.players.find(p => p.id === playerId);
+    
+    const finishBtn = document.createElement("button");
+    finishBtn.className = "btn btn--ghost";
+    finishBtn.textContent = "Finish Season";
+    finishBtn.addEventListener("click", () => {
+      player.currentSeason = (player.currentSeason || 1) + 1;
+      player.seasonSignedTeam = null;
+      player.seasonSignedRound = null;
+      
+      // Add a new round for the next season
+      const nextRound = player.rounds.length + 1;
+      player.rounds.push({
+        id: uid("round"),
+        label: `Season ${player.currentSeason} team`,
+        team: "",
+        teammate: "",
+        result: "",
+        attempts: 0,
+        note: "",
+      });
+      
+      saveState();
+      refreshRosterViews();
+    });
+    
+    btn.parentNode.insertBefore(finishBtn, btn);
   });
 
   wrap.querySelectorAll('[data-action="delete-player"]').forEach(btn => {
@@ -565,8 +781,7 @@ function renderPlayers() {
       if (!confirm("Remove this player's whole career from this save?")) return;
       state.players = state.players.filter(p => p.id !== playerId);
       saveState();
-      renderPlayers();
-      renderTeams();
+      refreshRosterViews();
     });
   });
 }
@@ -592,14 +807,14 @@ document.getElementById("addPlayerBtn").addEventListener("click", () => {
       id: uid("round"),
       label: "Season 1 team",
       team: "",
+      teammate: "",
       result: "",
       attempts: 0,
       note: "",
     }],
   });
   saveState();
-  renderPlayers();
-  renderTeams();
+  refreshRosterViews();
 });
 
 /* ---------------------------- Data tab ---------------------------- */
@@ -657,6 +872,8 @@ function renderAll() {
   renderStandings();
   renderCalendar();
   renderPlayers();
+  renderDrivers();
+  renderStandings();
 }
 
 renderAll();

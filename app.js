@@ -138,13 +138,13 @@ function calculatePlayerAcclaim(player) {
   const teammateBeatenPercent = Number(player.teammateBeatenPercent ?? 0) || 0;
   const driverChampionships = Number(player.driverChampionships ?? 0) || 0;
   const constructorChampionships = Number(player.constructorChampionships ?? 0) || 0;
-  const racesDriven = Number(player.racesDriven ?? player.races ?? 0) || 0;
+  const races = Number(player.races ?? player.racesDriven ?? 0) || 0;
 
-  const currentAcclaim = (wins + podiums + fastestLaps + teammateBeatenPercent / 100) / 2;
-  const bonus = racesDriven > 0 ? (currentAcclaim + wins) / racesDriven : 0;
+  const currentAcclaim = (races + wins + podiums + fastestLaps + teammateBeatenPercent / 100) / 2;
+  const bonus = races > 0 ? (currentAcclaim + wins) / races : 0;
   const finalAcclaim = currentAcclaim + bonus + (driverChampionships + constructorChampionships) * 0.5;
 
-  return Number(finalAcclaim.toFixed(2));
+  return Number(Math.max(1, finalAcclaim).toFixed(2));
 }
 
 /* ---------------------------- render: Teams ---------------------------- */

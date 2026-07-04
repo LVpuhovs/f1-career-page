@@ -100,6 +100,7 @@ function makeDefaultPlayers() {
       team: "",
       points: 0,
       result: "",
+      attempts: 0,
       note: "",
     })),
   }));

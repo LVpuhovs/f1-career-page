@@ -74,6 +74,63 @@ function chanceOfSuccess(points, team) {
   return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
+function getPlayerAcclaim(player) {
+  if (!player) return 0;
+  player.acclaim = calculatePlayerAcclaim(player);
+  return player.acclaim;
+}
+
+function pickWeightedTeam(player, teams) {
+  const score = getPlayerAcclaim(player);
+  const weighted = (teams || [])
+    .map(team => ({ team, chance: chanceOfSuccess(score, team) }))
+    .filter(item => item.chance > 0);
+
+  if (!weighted.length) return null;
+
+  const total = weighted.reduce((sum, item) => sum + item.chance, 0);
+  let roll = Math.random() * total;
+  for (const item of weighted) {
+    roll -= item.chance;
+    if (roll <= 0) return item.team;
+  }
+  return weighted[weighted.length - 1].team;
+}
+
+function resolveRoundAttempt(player, round, teams) {
+  const selectedTeam = round.team ? teams.find(team => team.id === round.team) : null;
+  if (!selectedTeam) {
+    round.result = "";
+    round.attempts = 0;
+    return { team: round.team, result: round.result, note: round.note || "", randomized: false };
+  }
+
+  const chance = chanceOfSuccess(getPlayerAcclaim(player), selectedTeam);
+  const passed = Math.random() * 100 < chance;
+
+  if (passed) {
+    round.result = "Success";
+    round.attempts = 0;
+    return { team: round.team, result: round.result, note: round.note || "", randomized: false };
+  }
+
+  round.result = "Fail";
+  round.attempts = (Number(round.attempts) || 0) + 1;
+
+  if (round.attempts >= 3) {
+    const randomizedTeam = pickWeightedTeam(player, teams);
+    if (randomizedTeam && randomizedTeam.id !== round.team) {
+      round.team = randomizedTeam.id;
+      round.result = "";
+      round.attempts = 0;
+      round.note = `${round.note || ""} Randomized after 3 failed attempts`.trim();
+      return { team: round.team, result: round.result, note: round.note, randomized: true };
+    }
+  }
+
+  return { team: round.team, result: round.result, note: round.note || "", randomized: false };
+}
+
 function calculatePlayerAcclaim(player) {
   const baseAcclaim = Number(player.acclaimBase ?? 1) || 1;
   const races = Number(player.races ?? 0) || 0;
@@ -105,12 +162,12 @@ function renderTeams() {
   renderChanceContextOptions();
   const activePlayerId = document.getElementById("chanceContext").value;
   const activePlayer = state.players.find(p => p.id === activePlayerId) || state.players[0];
-  const points = activePlayer ? activePlayer.points : 0;
+  const acclaim = activePlayer ? getPlayerAcclaim(activePlayer) : 0;
 
   const tbody = document.querySelector("#teamsTable tbody");
   const sorted = [...state.teams].sort((a, b) => b.pointsRequired - a.pointsRequired);
   tbody.innerHTML = sorted.map((team, i) => {
-    const chance = chanceOfSuccess(points, team);
+    const chance = chanceOfSuccess(acclaim, team);
     return `
       <tr data-id="${team.id}">
         <td class="mono">${i + 1}</td>
@@ -277,11 +334,11 @@ function teamOptions(selectedId) {
 function renderPlayers() {
   const wrap = document.getElementById("playersWrap");
   wrap.innerHTML = state.players.map(player => {
-    player.acclaim = calculatePlayerAcclaim(player);
+    getPlayerAcclaim(player);
 
     const rounds = player.rounds.map(round => {
       const team = round.team ? teamById(round.team) : null;
-      const chance = team ? chanceOfSuccess(player.points, team) : null;
+      const chance = team ? chanceOfSuccess(player.acclaim, team) : null;
       return `
         <div class="round-row" data-player="${player.id}" data-round="${round.id}">
           <span class="round-label">${escapeHtml(round.label)}</span>
@@ -371,6 +428,16 @@ function renderPlayers() {
         const player = state.players.find(p => p.id === playerId);
         const round = player.rounds.find(r => r.id === roundId);
         const field = inp.dataset.field;
+
+        if (field === "team") {
+          round.team = inp.value;
+          resolveRoundAttempt(player, round, state.teams);
+          saveState();
+          renderPlayers();
+          renderTeams();
+          return;
+        }
+
         round[field] = field === "points" ? (Number(inp.value) || 0) : inp.value;
         saveState();
         renderPlayers();
@@ -396,6 +463,7 @@ function renderPlayers() {
         team: "",
         points: 0,
         result: "",
+        attempts: 0,
         note: "",
       });
       saveState();
@@ -433,7 +501,7 @@ document.getElementById("addPlayerBtn").addEventListener("click", () => {
     racesDriven: 0,
     rounds: ["Round 1", "Round 2", "Round 3", "Randomized"].map((label) => ({
       id: uid("round"),
-      label, team: "", points: 0, result: "", note: "",
+      label, team: "", points: 0, result: "", attempts: 0, note: "",
     })),
   });
   saveState();

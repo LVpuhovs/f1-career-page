@@ -140,7 +140,7 @@ function calculatePlayerAcclaim(player) {
   const constructorChampionships = Number(player.constructorChampionships ?? 0) || 0;
   const racesDriven = Number(player.racesDriven ?? player.races ?? 0) || 0;
 
-  const currentAcclaim = ((player.races ?? 0) + wins + podiums + fastestLaps) * (teammateBeatenPercent / 100) / 2;
+  const currentAcclaim = (wins + podiums + fastestLaps + teammateBeatenPercent / 100) / 2;
   const bonus = racesDriven > 0 ? (currentAcclaim + wins) / racesDriven : 0;
   const finalAcclaim = currentAcclaim + bonus + (driverChampionships + constructorChampionships) * 0.5;
 
@@ -415,7 +415,15 @@ function renderPlayers() {
       const playerId = inp.closest(".player-card").dataset.player;
       const player = state.players.find(p => p.id === playerId);
       const field = inp.dataset.field;
-      player[field] = field === "name" ? inp.value : (Number(inp.value) || 0);
+      const value = field === "name" ? inp.value : (Number(inp.value) || 0);
+
+      if (field === "races" || field === "racesDriven") {
+        player.races = value;
+        player.racesDriven = value;
+      } else {
+        player[field] = value;
+      }
+
       saveState();
       renderPlayers();
       renderTeams();
@@ -503,7 +511,6 @@ document.getElementById("addPlayerBtn").addEventListener("click", () => {
   state.players.push({
     id: uid("player"),
     name: "Player " + n,
-    acclaimBase: 1,
     acclaim: 1,
     points: 0,
     races: 0,

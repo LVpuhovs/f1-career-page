@@ -147,20 +147,19 @@ input[type="checkbox"]{ width:16px; height:16px; accent-color: var(--red); curso
 .players{ display:flex; flex-direction:column; gap:20px; }
 .player-card{ background: var(--panel); border:1px solid var(--border); border-radius: var(--radius); overflow:hidden; }
 .player-card__head{
-  display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding: 14px 18px;
+  display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; padding: 14px 18px;
   background: var(--panel-2); border-bottom: 1px solid var(--border);
 }
 .player-card__head input[type="text"]{
   font-family: var(--font-display); text-transform:uppercase; font-size:18px; font-weight:700;
   background:transparent; border:none; color:#fff; border-bottom: 2px solid transparent; padding:2px 0;
-  min-width: 140px;
+  min-width: 120px;
 }
 .player-card__head input[type="text"]:focus{ outline:none; border-bottom-color: var(--red); }
-.stat{ display:flex; flex-direction:column; gap:2px; }
+.stat{ display:flex; flex-direction:column; gap:2px; min-width: 92px; flex: 1 1 92px; }
 .stat label{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color: var(--text-dim); }
-.stat input{ width: 90px; }
-.player-card__head .spacer{ flex:1; }
-
+.stat input{ width: 100%; min-width: 70px; max-width: 100px; }
+.player-card__head .spacer{ flex:1; min-width: 80px; }
 .rounds{ padding: 14px 18px; display:flex; flex-direction:column; gap:10px; }
 .round-row{ display:grid; grid-template-columns: 110px 120px 1fr 110px 130px 34px; gap:10px; align-items:center; }
 .round-row .round-label{ font-family: var(--font-mono); font-size:12px; color: var(--text-dim); text-transform:uppercase; }
@@ -178,6 +177,7 @@ input[type="checkbox"]{ width:16px; height:16px; accent-color: var(--red); curso
   .round-row .result-pill{ grid-area: result; }
   .round-row input[data-field="note"]{ grid-area: note; }
   .round-row [data-action="delete-round"]{ grid-area: del; }
+}
 
 .standings-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .standings-grid h3{ font-size:14px; margin-bottom:10px; color: var(--text-dim); }

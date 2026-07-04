@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026 Career Mode — Paddock Tracker</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="pitwall">
+  <div class="pitwall__title">
+    <span class="pitwall__flag" aria-hidden="true"></span>
+    <div>
+      <h1>2026 CAREER MODE</h1>
+      <p>Paddock tracker &amp; save file for your F1 career league</p>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="careers">Careers</button>
+    <button class="tab" data-tab="teams">Teams</button>
+    <button class="tab" data-tab="drivers">Drivers</button>
+    <button class="tab" data-tab="standings">Standings</button>
+    <button class="tab" data-tab="calendar">Calendar</button>
+    <button class="tab" data-tab="data">Data</button>
+  </nav>
+</header>
+
+<main id="app">
+
+  <!-- CAREERS -->
+  <section class="view" id="view-careers">
+    <div class="view__head">
+      <h2>Driver careers</h2>
+      <button class="btn btn--accent" id="addPlayerBtn">+ Add player</button>
+    </div>
+    <p class="hint">Each card is one friend's save. Track their acclaim, career points, which team they've applied to each round, and whether the move landed.</p>
+    <div id="playersWrap" class="players"></div>
+  </section>
+
+  <!-- TEAMS -->
+  <section class="view hidden" id="view-teams">
+    <div class="view__head">
+      <h2>Team requirements</h2>
+      <div class="chance-context">
+        <label for="chanceContext">Preview chance of success for</label>
+        <select id="chanceContext"></select>
+      </div>
+    </div>
+    <p class="hint">Points required &amp; reputation set the bar for each seat. Chance of success = (career points ÷ points required) × reputation, capped at 100%.</p>
+    <div class="table-wrap">
+      <table class="datatable" id="teamsTable">
+        <thead>
+          <tr>
+            <th>#</th><th>Team</th><th>Points required</th><th>Reputation</th><th>Chance of success</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- DRIVERS -->
+  <section class="view hidden" id="view-drivers">
+    <div class="view__head">
+      <h2>2026 grid</h2>
+    </div>
+    <p class="hint">Reference line-up — reassign a seat if your career mode diverges from reality (a silly-season swap, a mid-season replacement, etc).</p>
+    <div class="table-wrap">
+      <table class="datatable" id="driversTable">
+        <thead>
+          <tr><th>#</th><th>Driver</th><th>Team</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- STANDINGS -->
+  <section class="view hidden" id="view-standings">
+    <div class="view__head">
+      <h2>Standings</h2>
+    </div>
+    <p class="hint">Update points after each round. Rows re-sort automatically.</p>
+    <div class="standings-grid">
+      <div>
+        <h3>Drivers' Championship</h3>
+        <div class="table-wrap">
+          <table class="datatable" id="driverStandingsTable">
+            <thead><tr><th>Pos</th><th>Driver</th><th>Team</th><th>Points</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3>Constructors' Championship</h3>
+        <div class="table-wrap">
+          <table class="datatable" id="constructorStandingsTable">
+            <thead><tr><th>Pos</th><th>Team</th><th>Points</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section class="view hidden" id="view-calendar">
+    <div class="view__head">
+      <h2>2026 calendar</h2>
+      <button class="btn" id="addRaceBtn">+ Add race</button>
+    </div>
+    <p class="hint">Tick a race off once your group has played it. Dates marked TBC weren't confirmed when this tracker was built — edit freely in <code>data.js</code> or right here.</p>
+    <div class="table-wrap">
+      <table class="datatable" id="calendarTable">
+        <thead><tr><th>✓</th><th>Rd</th><th>Grand Prix</th><th>Circuit</th><th>Date</th><th>Sprint</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- DATA -->
+  <section class="view hidden" id="view-data">
+    <div class="view__head">
+      <h2>Save data</h2>
+    </div>
+    <p class="hint">
+      This page has no server — everything lives in this browser's storage. To play with friends on
+      separate machines, export your save after each session and share the file (Discord, email, whatever),
+      then have the next person import it before their turn.
+    </p>
+    <div class="data-actions">
+      <button class="btn btn--accent" id="exportBtn">⬇ Export save (.json)</button>
+      <label class="btn" for="importFile">⬆ Import save</label>
+      <input type="file" id="importFile" accept="application/json" hidden>
+      <button class="btn btn--danger" id="resetBtn">⟲ Reset to defaults</button>
+    </div>
+    <p class="hint" id="saveStatus"></p>
+  </section>
+
+</main>
+
+<footer class="footer">Built as a static page — host it on GitHub Pages and it just works. No backend, no accounts, no data leaves your browser unless you export it.</footer>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -28,7 +28,29 @@ function loadState() {
     if (!raw) return defaultState();
     const parsed = JSON.parse(raw);
     // shallow-merge against defaults so new fields introduced later don't crash old saves
-    return Object.assign(defaultState(), parsed);
+    const merged = Object.assign(defaultState(), parsed);
+
+    // sanitize player entries so older saves can't leave acclaim below 1
+    merged.players = (merged.players || []).map(p => {
+      p.races = Number(p.races ?? p.racesDriven ?? 0) || 0;
+      p.racesDriven = p.races;
+      p.wins = Number(p.wins ?? 0) || 0;
+      p.podiums = Number(p.podiums ?? 0) || 0;
+      p.fastestLaps = Number(p.fastestLaps ?? 0) || 0;
+      p.teammateBeatenPercent = Number(p.teammateBeatenPercent ?? 0) || 0;
+      p.driverChampionships = Number(p.driverChampionships ?? 0) || 0;
+      p.constructorChampionships = Number(p.constructorChampionships ?? 0) || 0;
+      p.rounds = (p.rounds || []).map(r => Object.assign({ attempts: 0, result: "", team: "", note: "" }, r));
+      // compute acclaim using existing calc and ensure minimum 1
+      try {
+        p.acclaim = Math.max(1, calculatePlayerAcclaim(p));
+      } catch (err) {
+        p.acclaim = 1;
+      }
+      return p;
+    });
+
+    return merged;
   } catch (e) {
     console.warn("Could not load save, starting fresh.", e);
     return defaultState();
@@ -336,7 +358,8 @@ function teamOptions(selectedId) {
 function renderPlayers() {
   const wrap = document.getElementById("playersWrap");
   wrap.innerHTML = state.players.map(player => {
-    getPlayerAcclaim(player);
+    // ensure acclaim is current and at least 1
+    try { player.acclaim = Math.max(1, calculatePlayerAcclaim(player)); } catch (e) { player.acclaim = 1; }
 
     const rounds = player.rounds.map(round => {
       const team = round.team ? teamById(round.team) : null;

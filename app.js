@@ -132,8 +132,6 @@ function resolveRoundAttempt(player, round, teams) {
 }
 
 function calculatePlayerAcclaim(player) {
-  const baseAcclaim = Number(player.acclaimBase ?? 1) || 1;
-  const races = Number(player.races ?? 0) || 0;
   const wins = Number(player.wins ?? 0) || 0;
   const podiums = Number(player.podiums ?? 0) || 0;
   const fastestLaps = Number(player.fastestLaps ?? 0) || 0;
@@ -142,9 +140,9 @@ function calculatePlayerAcclaim(player) {
   const constructorChampionships = Number(player.constructorChampionships ?? 0) || 0;
   const racesDriven = Number(player.racesDriven ?? player.races ?? 0) || 0;
 
-  const currentAcclaim = (races + wins + podiums + fastestLaps + teammateBeatenPercent) / 2;
+  const currentAcclaim = ((player.races ?? 0) + wins + podiums + fastestLaps) * (teammateBeatenPercent / 100) / 2;
   const bonus = racesDriven > 0 ? (currentAcclaim + wins) / racesDriven : 0;
-  const finalAcclaim = baseAcclaim + currentAcclaim + bonus + (driverChampionships + constructorChampionships) * 0.5;
+  const finalAcclaim = currentAcclaim + bonus + (driverChampionships + constructorChampionships) * 0.5;
 
   return Number(finalAcclaim.toFixed(2));
 }
@@ -163,6 +161,10 @@ function renderTeams() {
   const activePlayerId = document.getElementById("chanceContext").value;
   const activePlayer = state.players.find(p => p.id === activePlayerId) || state.players[0];
   const acclaim = activePlayer ? getPlayerAcclaim(activePlayer) : 0;
+  const chanceDetails = document.getElementById("chanceDetails");
+  if (chanceDetails) {
+    chanceDetails.textContent = `${escapeHtml(activePlayer.name)} acclaim: ${acclaim}`;
+  }
 
   const tbody = document.querySelector("#teamsTable tbody");
   const sorted = [...state.teams].sort((a, b) => b.pointsRequired - a.pointsRequired);
@@ -343,9 +345,10 @@ function renderPlayers() {
         <div class="round-row" data-player="${player.id}" data-round="${round.id}">
           <span class="round-label">${escapeHtml(round.label)}</span>
           <select class="cell-input" data-field="team">${teamOptions(round.team)}</select>
-          <input class="cell-input" type="number" data-field="points" value="${round.points}" placeholder="pts" title="Points earned this round">
+          <button class="btn btn--ghost" data-action="attempt-signing">Attempt sign</button>
+          <div class="round-meta">${chance !== null ? `Chance: ${chance}%` : "Select a team"}${round.attempts ? ` · Attempts: ${round.attempts}/3` : ""}</div>
           <select class="result-pill" data-field="result" data-result="${round.result}">
-            <option value="" ${round.result === "" ? "selected" : ""}>Pending${chance !== null ? " (" + chance + "%)" : ""}</option>
+            <option value="" ${round.result === "" ? "selected" : ""}>Pending</option>
             <option value="Success" ${round.result === "Success" ? "selected" : ""}>✓ Success</option>
             <option value="Fail" ${round.result === "Fail" ? "selected" : ""}>✕ Fail</option>
           </select>
@@ -431,14 +434,15 @@ function renderPlayers() {
 
         if (field === "team") {
           round.team = inp.value;
-          resolveRoundAttempt(player, round, state.teams);
+          round.result = "";
+          round.attempts = 0;
           saveState();
           renderPlayers();
           renderTeams();
           return;
         }
 
-        round[field] = field === "points" ? (Number(inp.value) || 0) : inp.value;
+        round[field] = inp.value;
         saveState();
         renderPlayers();
       });
@@ -450,6 +454,17 @@ function renderPlayers() {
       player.rounds = player.rounds.filter(r => r.id !== roundId);
       saveState();
       renderPlayers();
+    });
+
+    row.querySelector('[data-action="attempt-signing"]').addEventListener("click", () => {
+      const playerId = row.dataset.player;
+      const roundId = row.dataset.round;
+      const player = state.players.find(p => p.id === playerId);
+      const round = player.rounds.find(r => r.id === roundId);
+      resolveRoundAttempt(player, round, state.teams);
+      saveState();
+      renderPlayers();
+      renderTeams();
     });
   });
 

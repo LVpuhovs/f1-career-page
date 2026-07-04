@@ -74,6 +74,24 @@ function chanceOfSuccess(points, team) {
   return Math.max(0, Math.min(100, Math.round(raw)));
 }
 
+function calculatePlayerAcclaim(player) {
+  const baseAcclaim = Number(player.acclaimBase ?? 1) || 1;
+  const races = Number(player.races ?? 0) || 0;
+  const wins = Number(player.wins ?? 0) || 0;
+  const podiums = Number(player.podiums ?? 0) || 0;
+  const fastestLaps = Number(player.fastestLaps ?? 0) || 0;
+  const teammateBeatenPercent = Number(player.teammateBeatenPercent ?? 0) || 0;
+  const driverChampionships = Number(player.driverChampionships ?? 0) || 0;
+  const constructorChampionships = Number(player.constructorChampionships ?? 0) || 0;
+  const racesDriven = Number(player.racesDriven ?? player.races ?? 0) || 0;
+
+  const currentAcclaim = (races + wins + podiums + fastestLaps + teammateBeatenPercent) / 2;
+  const bonus = racesDriven > 0 ? (currentAcclaim + wins) / racesDriven : 0;
+  const finalAcclaim = baseAcclaim + currentAcclaim + bonus + (driverChampionships + constructorChampionships) * 0.5;
+
+  return Number(finalAcclaim.toFixed(2));
+}
+
 /* ---------------------------- render: Teams ---------------------------- */
 
 function renderChanceContextOptions() {
@@ -259,6 +277,8 @@ function teamOptions(selectedId) {
 function renderPlayers() {
   const wrap = document.getElementById("playersWrap");
   wrap.innerHTML = state.players.map(player => {
+    player.acclaim = calculatePlayerAcclaim(player);
+
     const rounds = player.rounds.map(round => {
       const team = round.team ? teamById(round.team) : null;
       const chance = team ? chanceOfSuccess(player.points, team) : null;
@@ -286,8 +306,40 @@ function renderPlayers() {
             <input class="cell-input" type="number" data-field="points" value="${player.points}">
           </div>
           <div class="stat">
+            <label>Races</label>
+            <input class="cell-input" type="number" min="0" data-field="races" value="${player.races ?? 0}">
+          </div>
+          <div class="stat">
+            <label>Wins</label>
+            <input class="cell-input" type="number" min="0" data-field="wins" value="${player.wins ?? 0}">
+          </div>
+          <div class="stat">
+            <label>Podiums</label>
+            <input class="cell-input" type="number" min="0" data-field="podiums" value="${player.podiums ?? 0}">
+          </div>
+          <div class="stat">
+            <label>Fastest laps</label>
+            <input class="cell-input" type="number" min="0" data-field="fastestLaps" value="${player.fastestLaps ?? 0}">
+          </div>
+          <div class="stat">
+            <label>Teammate beaten %</label>
+            <input class="cell-input" type="number" min="0" data-field="teammateBeatenPercent" value="${player.teammateBeatenPercent ?? 0}">
+          </div>
+          <div class="stat">
+            <label>Driver titles</label>
+            <input class="cell-input" type="number" min="0" data-field="driverChampionships" value="${player.driverChampionships ?? 0}">
+          </div>
+          <div class="stat">
+            <label>Constructor titles</label>
+            <input class="cell-input" type="number" min="0" data-field="constructorChampionships" value="${player.constructorChampionships ?? 0}">
+          </div>
+          <div class="stat">
+            <label>Races driven</label>
+            <input class="cell-input" type="number" min="0" data-field="racesDriven" value="${player.racesDriven ?? player.races ?? 0}">
+          </div>
+          <div class="stat">
             <label>Acclaim</label>
-            <input class="cell-input" type="number" data-field="acclaim" value="${player.acclaim}">
+            <input class="cell-input" type="number" data-field="acclaim" value="${player.acclaim}" disabled title="Calculated from the acclaim formula">
           </div>
           <div class="spacer"></div>
           <button class="btn btn--ghost" data-action="add-round">+ Round</button>
@@ -368,8 +420,17 @@ document.getElementById("addPlayerBtn").addEventListener("click", () => {
   state.players.push({
     id: uid("player"),
     name: "Player " + n,
-    acclaim: 0,
+    acclaimBase: 1,
+    acclaim: 1,
     points: 0,
+    races: 0,
+    wins: 0,
+    podiums: 0,
+    fastestLaps: 0,
+    teammateBeatenPercent: 0,
+    driverChampionships: 0,
+    constructorChampionships: 0,
+    racesDriven: 0,
     rounds: ["Round 1", "Round 2", "Round 3", "Randomized"].map((label) => ({
       id: uid("round"),
       label, team: "", points: 0, result: "", note: "",
